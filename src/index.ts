@@ -205,8 +205,8 @@ class ServerlessEsLogsPlugin {
     const logGroup = esLogs.logGroup;
     const template = this.serverless.service.provider.compiledCloudFormationTemplate;
     const functions = this.serverless.service.getAllFunctions();
-    let permissionDependsOn = [this.logProcesserLogicalId];
-    let permissionId = "LogGroupPermission";
+    const permissionDependsOn = [this.logProcesserLogicalId];
+    const permissionId = 'LogGroupPermission';
 
     // Create permission for subscription filter
     let permission: ITemplate = new LambdaPermissionBuilder()
@@ -241,7 +241,6 @@ class ServerlessEsLogsPlugin {
             .withDependsOn([this.logProcesserLogicalId]);
     // Create subscription template
     let subscriptionTemplate: ITemplate = new TemplateBuilder();
-            
     // Add cloudwatch subscription for each function except log processer
     functions.forEach((name: string) => {
         /* istanbul ignore if */
@@ -255,7 +254,6 @@ class ServerlessEsLogsPlugin {
         const logGroupName = template.Resources[logGroupLogicalId].Properties.LogGroupName;
 
         permissionDependsOn.push(logGroupLogicalId);
-        
         // Create subscription filter
         const subscriptionFilter = new SubscriptionFilterBuilder()
             .withDestinationArn({
@@ -268,15 +266,13 @@ class ServerlessEsLogsPlugin {
             .withLogGroupName(logGroupName)
             .withDependsOn([this.logProcesserLogicalId, permissionId])
             .build();
-        
-            subscriptionTemplate = subscriptionTemplate
-            .withResource(subscriptionLogicalId, subscriptionFilter);
-        
+        subscriptionTemplate = subscriptionTemplate
+          .withResource(subscriptionLogicalId, subscriptionFilter);
     });
 
     permission = permission
-    .withDependsOn(permissionDependsOn)
-    .build();
+      .withDependsOn(permissionDependsOn)
+      .build();
 
     subscriptionTemplate = subscriptionTemplate
         .withResource(permissionId, permission)

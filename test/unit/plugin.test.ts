@@ -374,6 +374,31 @@ describe('serverless-es-logs :: Plugin tests', () => {
           expect(permissions.length).to.equal(1);
         });
       });
+
+      describe('#addSpecificCloudwatchGroupSubscriptions()', () => {
+        it('should skip if \'logGroup\' option not set', () => {
+          const numFunctions = random.number({ min: 1, max: 5 });
+          addFunctions(numFunctions);
+          const template = serverless.service.provider.compiledCloudFormationTemplate;
+          plugin.hooks['aws:package:finalize:mergeCustomProviderResources']();
+          const subscriptions = _.filter(template.Resources, (v, k) => v.Type === 'AWS::Logs::SubscriptionFilter');
+          const permissions = _.filter(template.Resources, (v, k) => v.Type === 'AWS::Lambda::Permission');          
+          expect(subscriptions.length).to.equal(numFunctions);
+          expect(permissions.length).to.equal(numFunctions);
+        });
+        it('should create a subscription and permission for specific log group', () => {
+          const numFunctions = random.number({ min: 1, max: 5 });
+          addFunctions(numFunctions);
+          serverless.service.custom.esLogs.logGroup = 'some_loggroup';
+          plugin = new ServerlessEsLogsPlugin(serverless, options);
+          const template = serverless.service.provider.compiledCloudFormationTemplate;
+          plugin.hooks['aws:package:finalize:mergeCustomProviderResources']();
+          const subscriptions = _.filter(template.Resources, (v, k) => v.Type === 'AWS::Logs::SubscriptionFilter');
+          const permissions = _.filter(template.Resources, (v, k) => v.Type === 'AWS::Lambda::Permission');          
+          expect(subscriptions.length).to.equal(numFunctions);
+          expect(permissions.length).to.equal(1);
+        });
+      });
     });
   });
 
