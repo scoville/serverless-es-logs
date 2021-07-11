@@ -21,7 +21,7 @@
     "templates"
   ],
   "scripts": {
-    "prepare": "yarn compile:clean && yarn compile",
+    "prepare": "yarn compile:clean && yarn && yarn compile",
     "compile": "tsc",
     "compile:clean": "rimraf dist",
     "compile:watch": "tsc -w",
