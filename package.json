@@ -21,8 +21,8 @@
     "templates"
   ],
   "scripts": {
-    "prepare": "yarn compile:clean && yarn && yarn compile",
-    "compile": "tsc",
+    "prepare": "ls && yarn compile:clean && yarn && yarn compile",
+    "compile": "tsc --showConfig",
     "compile:clean": "rimraf dist",
     "compile:watch": "tsc -w",
     "coverage": "nyc report --reporter=text-lcov | coveralls",
