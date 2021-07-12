@@ -189,6 +189,7 @@ function post(body, callback) {
             responseBody += chunk;
         });
         response.on('end', function() {
+            console.log("RESPONSE BODY", responseBody)
             var info = JSON.parse(responseBody);
             var failedItems;
             var success;
