@@ -1,6 +1,7 @@
 import fs from 'fs-extra';
 import _ from 'lodash';
 import path from 'path';
+import { ITemplate } from './interfaces';
 
 import { LambdaPermissionBuilder, SubscriptionFilterBuilder, TemplateBuilder } from './utils';
 
@@ -59,11 +60,16 @@ class ServerlessEsLogsPlugin {
 
   private mergeCustomProviderResources(): void {
     this.serverless.cli.log('ServerlessEsLogsPlugin.mergeCustomProviderResources()');
-    const { includeApiGWLogs, retentionInDays, useDefaultRole, xrayTracingPermissions } = this.custom().esLogs;
+    const { includeApiGWLogs, retentionInDays, useDefaultRole, xrayTracingPermissions, logGroup } = this.custom().esLogs;
     const template = this.serverless.service.provider.compiledCloudFormationTemplate;
 
     // Add cloudwatch subscriptions to firehose for functions' log groups
-    this.addLambdaCloudwatchSubscriptions();
+    if(logGroup) {
+      this.addSpecificCloudwatchGroupSubscriptions();
+  } else {
+      // Add cloudwatch subscriptions to firehose for functions' log groups
+      this.addLambdaCloudwatchSubscriptions();
+  }
 
     // Configure Cloudwatch log retention
     if (retentionInDays !== undefined) {
@@ -192,6 +198,87 @@ class ServerlessEsLogsPlugin {
       _.merge(template, subscriptionTemplate);
     }
   }
+
+  private addSpecificCloudwatchGroupSubscriptions() {
+    const { esLogs } = this.custom();
+    const filterPattern = esLogs.filterPattern || this.defaultLambdaFilterPattern;
+    const logGroup = esLogs.logGroup;
+    const template = this.serverless.service.provider.compiledCloudFormationTemplate;
+    const functions = this.serverless.service.getAllFunctions();
+    const permissionDependsOn = [this.logProcesserLogicalId];
+    const permissionId = 'LogGroupPermission';
+
+    // Create permission for subscription filter
+    let permission: ITemplate = new LambdaPermissionBuilder()
+            .withFunctionName({
+            'Fn::GetAtt': [
+                this.logProcesserLogicalId,
+                'Arn',
+            ],
+        })
+            .withPrincipal({
+            'Fn::Sub': 'logs.${AWS::Region}.amazonaws.com',
+        })
+            .withSourceArn({
+                'Fn::Join': [
+                    '',
+                    [
+                        'arn:aws:logs:',
+                        {
+                            Ref: 'AWS::Region',
+                        },
+                        ':',
+                        {
+                            Ref: 'AWS::AccountId',
+                        },
+                        ':log-group:',
+                        logGroup,
+                        ':',
+                        '*',
+                    ],
+                ],
+            })
+            .withDependsOn([this.logProcesserLogicalId]);
+    // Create subscription template
+    let subscriptionTemplate: ITemplate = new TemplateBuilder();
+    // Add cloudwatch subscription for each function except log processer
+    functions.forEach((name: string) => {
+        /* istanbul ignore if */
+        if (name === this.logProcesserName) {
+            return;
+        }
+        const normalizedFunctionName = this.provider.naming.getNormalizedFunctionName(name);
+        const subscriptionLogicalId = `${normalizedFunctionName}SubscriptionFilter`;
+        const permissionLogicalId = `${normalizedFunctionName}CWPermission`;
+        const logGroupLogicalId = `${normalizedFunctionName}LogGroup`;
+        const logGroupName = template.Resources[logGroupLogicalId].Properties.LogGroupName;
+
+        permissionDependsOn.push(logGroupLogicalId);
+        // Create subscription filter
+        const subscriptionFilter = new SubscriptionFilterBuilder()
+            .withDestinationArn({
+            'Fn::GetAtt': [
+                this.logProcesserLogicalId,
+                'Arn',
+            ],
+        })
+            .withFilterPattern(filterPattern)
+            .withLogGroupName(logGroupName)
+            .withDependsOn([this.logProcesserLogicalId, permissionId])
+            .build();
+        subscriptionTemplate = subscriptionTemplate
+          .withResource(subscriptionLogicalId, subscriptionFilter);
+    });
+
+    permission = permission
+      .withDependsOn(permissionDependsOn)
+      .build();
+
+    subscriptionTemplate = subscriptionTemplate
+        .withResource(permissionId, permission)
+        .build();
+    _.merge(template, subscriptionTemplate);
+}
 
   private addLambdaCloudwatchSubscriptions(): void {
     const { esLogs } = this.custom();
